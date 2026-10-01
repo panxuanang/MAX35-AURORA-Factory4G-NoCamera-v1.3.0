@@ -1,0 +1,88 @@
+name: Build MAX35 AURORA 4G - Web Upload
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Factory MAX35 4G + AURORA + Fixed OTA + NoCamera
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.5
+
+    steps:
+      - name: Checkout compact project
+        uses: actions/checkout@v4
+
+      - name: Restore SpotPear factory source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '9470469a456b11cdb4e7e660fc89788c55e1e053246881c2fc386686b895c270  factory-base/xiaozhi-esp32-factory-source-minimal.tar.gz' | sha256sum -c -
+          mkdir -p work/xiaozhi-esp32
+          tar -xzf factory-base/xiaozhi-esp32-factory-source-minimal.tar.gz -C work/xiaozhi-esp32
+          test -f work/xiaozhi-esp32/main/boards/sp-esp32-s3-lcd-3.5-cam-ml307/sp-esp32-s3-lcd-3.5-cam-ml307.cc
+          echo "Factory source restored. managed_components will be fetched by ESP-IDF Component Manager."
+
+      - name: Apply AURORA UI, fixed OTA and camera bypass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/apply_customizations.py work/xiaozhi-esp32
+          python scripts/preflight.py work/xiaozhi-esp32
+
+      - name: Build exact SpotPear MAX35 ML307 factory target
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$IDF_PATH/export.sh"
+          cd work/xiaozhi-esp32
+          python scripts/release.py sp-esp32-s3-lcd-3.5-cam-ml307 --name sp-esp32-s3-lcd-3.5-cam-ml307
+
+      - name: Verify final build configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/xiaozhi-esp32
+          grep -Fx 'CONFIG_BOARD_TYPE_SPOTPEAR_ESP32_S3_3_5_LCD_CAM_ML307=y' sdkconfig
+          grep -Fx 'CONFIG_OTA_URL="http://124.221.112.55:8002/xiaozhi/ota/"' sdkconfig
+          grep -F 'new AuroraMax35Display' main/boards/sp-esp32-s3-lcd-3.5-cam-ml307/sp-esp32-s3-lcd-3.5-cam-ml307.cc
+          if sed -n '/CustomBoard() :/,/virtual AudioCodec\*/p' main/boards/sp-esp32-s3-lcd-3.5-cam-ml307/sp-esp32-s3-lcd-3.5-cam-ml307.cc | grep -Fq 'InitializeCamera();'; then
+            echo 'ERROR: camera startup call is still active' >&2
+            exit 1
+          fi
+          test -s build/merged-binary.bin
+          echo "Final configuration verified."
+
+      - name: Package firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(cat VERSION)"
+          OUT="MAX35_AURORA_FACTORY4G_NOCAM_v${VERSION}_merged-binary.bin"
+          mkdir -p dist
+          cp work/xiaozhi-esp32/build/merged-binary.bin "dist/${OUT}"
+          cp factory-recovery/ESP32S3-MAX35-4G-LCD-BCamera-Case.bin dist/FACTORY_RECOVERY_ESP32S3-MAX35-4G-LCD-BCamera-Case.bin
+          cat > dist/BUILD_INFO.txt <<EOF
+          project=MAX35-AURORA-Factory4G-NoCamera-WebUpload
+          wrapper_version=${VERSION}
+          factory_board=sp-esp32-s3-lcd-3.5-cam-ml307
+          esp_idf=release-v5.5
+          ota_url=http://124.221.112.55:8002/xiaozhi/ota/
+          ota_policy=fixed-in-firmware-nvs-override-disabled
+          camera=disabled-at-board-startup
+          flash_merged_binary_at=0x0
+          source_policy=SpotPear-factory-source-restored-from-repo-archive
+          EOF
+          (cd dist && sha256sum *.bin > SHA256SUMS.txt)
+          ls -lh dist
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MAX35-AURORA-Factory4G-NoCamera-v1.4.0
+          path: dist/
+          if-no-files-found: error
