@@ -1,0 +1,9 @@
+Factory source origin: user-provided SpotPear/斑梨 xiaozhi-esp32 archive
+Original archive SHA256: ea30d1912162f85d2afcf8c0e8d5dd198cfd5aeb4e718fd83a0ad8dd83d4d8b9
+Factory base archive SHA256: 9470469a456b11cdb4e7e660fc89788c55e1e053246881c2fc386686b895c270
+Factory recovery BIN SHA256: 565e5abd4cf392b2bde46ac31cb2b5f4ec4dca7841fe6e8423836f40fd59f5cf
+Factory board: sp-esp32-s3-lcd-3.5-cam-ml307
+Factory app project version in source: 2.1.0
+Wrapper version: 1.4.0
+Fixed OTA/backend URL: http://124.221.112.55:8002/xiaozhi/ota/
+Camera policy: disabled at board startup; GetCamera() returns nullptr
